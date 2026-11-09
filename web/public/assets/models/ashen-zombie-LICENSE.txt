@@ -1,0 +1,7 @@
+Source: https://opengameart.org/content/3d-character-pack
+Author: byzmod3d
+License: CC0
+Original archive: bravos_game_br_2023.zip / ZUMB_GAME_FREE / MULHER_FREE.fbx
+Converted to GLB with Blender 5.2.1 on 2026-09-07.
+This asset is static; the game uses procedural movement and faction-specific
+capture effects instead of claiming that the source contains skeletal clips.

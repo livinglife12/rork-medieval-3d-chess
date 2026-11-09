@@ -14,6 +14,8 @@ export interface GameSettings {
   /** Which army each side musters. */
   skins: Record<Faction, ArmySkinId>;
   captureCinematics: boolean;
+  /** Optional high-impact presentation layer; never changes chess legality. */
+  warMode: boolean;
   rotateBoard: boolean;
   /** Queue a move while the machine is still on the clock. */
   premoves: boolean;
@@ -175,6 +177,12 @@ export function SettingsPanel({
           note="Camera punch, strike, sparks and crumble — under 1.5s"
           value={settings.captureCinematics}
           onChange={(value) => onChange({ ...settings, captureCinematics: value })}
+        />
+        <Toggle
+          label="War Mode"
+          note="Amplifies impact, sparks, screen shake and faction colour without changing the rules"
+          value={settings.warMode}
+          onChange={(value) => onChange({ ...settings, warMode: value })}
         />
         <Toggle
           label="Swing camera between turns"

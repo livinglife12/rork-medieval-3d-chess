@@ -355,6 +355,8 @@ export class AudioManager {
   /** Music/ambience sub-bus, ducked underneath death cries. */
   private bedBus: GainNode | null = null;
   private buffers = new Map<string, AudioBuffer>();
+  /** Optional redistributable CC0 pack; procedural voices remain the fallback. */
+  private externalBuffers = new Map<string, AudioBuffer>();
   /** Decoded death cries keyed by their URL, streamed on demand. */
   private voices = new Map<string, AudioBuffer>();
   private voiceLoads = new Map<string, Promise<void>>();
@@ -435,6 +437,8 @@ export class AudioManager {
         }
       }),
     );
+    await this.loadExternal("swordAttack", "/assets/sfx/starninjas/sword - StarNinjas/sword.1.ogg");
+    await this.loadExternal("soulSwish", "/assets/sfx/swishes/swishes/swish-9.wav");
   }
 
   private startBeds(): void {
@@ -1719,6 +1723,76 @@ export class AudioManager {
    * Nothing here is downloaded, so a capture is punctuated on the exact frame it
    * completes even on a cold cache.
    */
+  /** Short crystalline signature used by the Frostborn legion. */
+  frostClaim(options: ConquestOptions = {}): void {
+    if (!this.ctx || !this.master || this.muted) return;
+    const when = this.ctx.currentTime + Math.max(0, options.delay ?? 0);
+    const bus = this.spellBus(options.pan ?? 0, 0.48);
+    const level = 0.18 * (options.volume ?? 1);
+    [392, 587, 784].forEach((frequency, index) => {
+      const at = when + index * 0.075;
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(frequency * 0.92, at);
+      osc.frequency.exponentialRampToValueAtTime(frequency, at + 0.035);
+      gain.gain.setValueAtTime(0.0001, at);
+      gain.gain.exponentialRampToValueAtTime(level / (1 + index * 0.25), at + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.38);
+      osc.connect(gain);
+      gain.connect(bus);
+      osc.start(at);
+      osc.stop(at + 0.42);
+    });
+  }
+
+  playExternal(name: string, volume = 1): void {
+    if (!this.ctx || !this.master || this.muted) return;
+    const buffer = this.externalBuffers.get(name);
+    if (!buffer) return;
+    const source = this.ctx.createBufferSource();
+    const gain = this.ctx.createGain();
+    gain.gain.value = volume;
+    source.buffer = buffer;
+    source.connect(gain);
+    gain.connect(this.master);
+    source.start(0);
+  }
+
+  private async loadExternal(name: string, url: string): Promise<void> {
+    try {
+      if (!this.ctx) return;
+      const response = await fetch(url);
+      if (!response.ok) return;
+      this.externalBuffers.set(name, await this.ctx.decodeAudioData(await response.arrayBuffer()));
+    } catch (error) {
+      console.warn(`[audio] optional asset unavailable: ${name}`, error);
+    }
+  }
+
+  /** Low soul-drone and dissonant rise used by Ashen Dead captures. */
+  soulClaim(options: ConquestOptions = {}): void {
+    if (!this.ctx || !this.master || this.muted) return;
+    const when = this.ctx.currentTime + Math.max(0, options.delay ?? 0);
+    const bus = this.spellBus(options.pan ?? 0, 0.42);
+    const level = 0.16 * (options.volume ?? 1);
+    [55, 82.5, 123.75].forEach((frequency, index) => {
+      const at = when + index * 0.06;
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+      osc.type = index === 0 ? "sawtooth" : "square";
+      osc.frequency.setValueAtTime(frequency, at);
+      osc.frequency.exponentialRampToValueAtTime(frequency * 1.08, at + 0.34);
+      gain.gain.setValueAtTime(0.0001, at);
+      gain.gain.exponentialRampToValueAtTime(level / (index + 1), at + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.56);
+      osc.connect(gain);
+      gain.connect(bus);
+      osc.start(at);
+      osc.stop(at + 0.62);
+    });
+  }
+
   conquest(options: ConquestOptions = {}): void {
     if (!this.ctx || !this.master || this.muted) return;
     const ctx = this.ctx;

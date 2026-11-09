@@ -646,7 +646,9 @@ knock-back, hover lift and full-brightness-when-chosen behaviour as the maps. Th
         │   ├── types.ts            MoveEvent, GameSnapshot, LedgerMove, …
         │   └── emitter.ts          tiny typed event emitter
         ├── ai/
-        │   ├── engine.worker.ts    negamax + alpha-beta + quiescence + iterative deepening
+        │   ├── engine.worker.ts    runs the search off the main thread
+        │   ├── search.ts           PVS + alpha-beta + quiescence + iterative deepening
+        │   ├── board.ts            fast 0x88 move generator (perft-tested) used by the search
         │   └── aiClient.ts         main-thread handle, cancels stale searches
         ├── scene/          three.js only
         │   ├── sceneEngine.ts      renderer, camera, interaction, move animation, cinematics
@@ -714,7 +716,13 @@ no global store, no prop drilling of game state into the scene.
 | --- | --- | --- |
 | **Easy** — *Squire* | Random legal move, prefers captures, always takes a mate in one | instant |
 | **Medium** — *Knight* | Depth 3 negamax + alpha-beta, material + piece-square tables | 0.7 s |
-| **Hard** — *Warlord* | Depth 5 iterative deepening, MVV-LVA ordering, quiescence on captures | 3.2 s |
+| **Hard** — *Warlord* | Iterative deepening as deep as time allows (typically 5–7 ply), principal-variation search, hash/killer/history move ordering, check extensions, quiescence on captures and promotions, repetition-aware | 3.2 s |
+
+The search lives in `search.ts` on its own 0x88 board (`board.ts`), roughly 100k positions per
+second, because chess.js builds FEN strings for every verbose move and is far too slow for a
+search; chess.js remains the rules authority for the game itself. The controller passes the
+game's earlier positions so the engine sees repetitions and will not draw a won game by
+shuffling. `board.test.ts` checks move generation against published perft counts.
 
 All searches run inside `engine.worker.ts`. `aiClient.ts` cancels a stale search whenever the
 position changes, so undo and resign are instant.

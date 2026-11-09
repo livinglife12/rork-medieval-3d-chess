@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { lockHorizontalRootMotion } from "./rootMotion";
+import { animationSource, selectAnimation } from "./animationSource";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import * as SkeletonUtils from "three/examples/jsm/utils/SkeletonUtils.js";
 
@@ -12,7 +14,7 @@ import {
   type PieceAnimationSet,
 } from "../assets/generated";
 import type { Faction, PieceKind } from "../core/types";
-import { loadGltf } from "./gltfQueue";
+import { loadGltf, type LoadedGltf } from "./gltfQueue";
 import { BADGE_LIFT, BADGE_SCALE, TOKEN_SCALE, rankBadgeTexture, tacticalTokenTexture } from "./rankBadges";
 import { factionRingTexture, radialTexture } from "./textures";
 import { Ease, type TweenManager } from "./tween";
@@ -638,7 +640,7 @@ export class PieceView {
       mesh.userData.piece = this;
       const source = mesh.material as THREE.MeshStandardMaterial;
       const material = source.clone();
-      applyFactionLook(material, color, ownLivery);
+      applyFactionLook(material, color, ownLivery, arsenal);
       installDissolve(material, this.dissolveUniforms, 0.85);
       mesh.material = material;
       this.materials.push(material);
@@ -1522,8 +1524,7 @@ export class PieceView {
       this.mixer.update(delta);
       if (this.rootBone && this.lockRootMotion) {
         // Keep the figure planted on its square; clips carry their own steps.
-        this.rootBone.position.x = this.rootRest.x;
-        this.rootBone.position.z = this.rootRest.z;
+        lockHorizontalRootMotion(this.rootBone, this.rootRest);
       }
       // The gun goes where the arms went this frame, not where the stance pose
       // left it: a levelled barrel is the whole point of an aiming clip.
@@ -1636,8 +1637,9 @@ function applyFactionLook(
   material: THREE.MeshStandardMaterial,
   color: Faction,
   ownLivery: boolean,
+  arsenal: ArsenalId,
 ): void {
-  if (ownLivery && material.map) {
+  if (ownLivery && material.map && arsenal !== "viking" && arsenal !== "undead") {
     // The sculpt was painted for this army — feathers, jade and gold would be
     // destroyed by a flat tint, so only the surface response is touched.
     material.color.setHex(0xffffff);
@@ -1649,7 +1651,22 @@ function applyFactionLook(
     material.needsUpdate = true;
     return;
   }
-  if (color === "w") {
+  if (arsenal === "viking") {
+    // Keep Quaternius' separate skin, armour, cloth and detail materials. The
+    // cold tint is deliberately light; side identity already comes from the
+    // tile band, crest and rim light, so it need not erase the sculpt's paint.
+    const tint = new THREE.Color(color === "w" ? 0x9bc7df : 0x19324f);
+    material.color.lerp(tint, ownLivery ? 0.12 : 0.34);
+    const metal = /armou?r|detail|metal|gold|steel/i.test(material.name);
+    material.roughness = metal ? 0.3 : Math.max(0.52, material.roughness);
+    material.metalness = metal ? Math.max(0.38, material.metalness) : Math.min(0.08, material.metalness);
+    material.emissive = new THREE.Color(color === "w" ? 0x4ea8d8 : 0x163b68);
+  } else if (arsenal === "undead") {
+    material.color.lerp(new THREE.Color(color === "w" ? 0x6f9884 : 0x18382b), ownLivery ? 0.2 : 0.42);
+    material.roughness = Math.max(0.5, material.roughness);
+    material.metalness = Math.min(0.3, material.metalness);
+    material.emissive = new THREE.Color(color === "w" ? 0x315c48 : 0x123d2d);
+  } else if (color === "w") {
     material.color.setHex(0xfff2dd);
     material.roughness = 0.34;
     material.metalness = 0.1;
@@ -1761,6 +1778,10 @@ export class PieceFactory {
   private clipSources = new Map<TemplateKey, PieceAnimationSet>();
   /** In-flight clip downloads, keyed by URL, so nothing is fetched twice. */
   private clipJobs = new Map<string, Promise<THREE.AnimationClip | null>>();
+  /** Animation bundles embedded in a rig GLB, keyed by the fragment-free URL. */
+  private animationBundles = new Map<string, THREE.AnimationClip[]>();
+  /** Shared rig requests: ranks using one sculpt download and parse it once. */
+  private rigJobs = new Map<string, Promise<LoadedGltf>>();
   /** Failed attempts per clip URL, so a missing file is not chased forever. */
   private clipFailures = new Map<string, number>();
   private clipListener: ClipListener | null = null;
@@ -1827,6 +1848,8 @@ export class PieceFactory {
   private dropArmies(): void {
     this.disposeTemplates();
     this.clipJobs.clear();
+    this.animationBundles.clear();
+    this.rigJobs.clear();
     this.clipFailures.clear();
     this.clipSources.clear();
     this.warming = null;
@@ -1962,7 +1985,14 @@ export class PieceFactory {
    * skeleton, so they bind straight onto the rigged scene — no retargeting.
    */
   private async loadAnimated(kind: PieceKind, set: PieceAnimationSet, arsenal: ArsenalId): Promise<Template> {
-    const rigged = await loadGltf(this.loader, set.rigged, 5);
+    const rigUrl = animationSource(set.rigged).url;
+    let rigJob = this.rigJobs.get(rigUrl);
+    if (!rigJob) {
+      rigJob = loadGltf(this.loader, rigUrl, 5);
+      this.rigJobs.set(rigUrl, rigJob);
+    }
+    const rigged = await rigJob;
+    this.animationBundles.set(rigUrl, rigged.animations);
     const clips: PieceClips = {};
     await Promise.all(
       OPENING_CLIPS.map(async (name) => {
@@ -1972,14 +2002,20 @@ export class PieceFactory {
         if (clip) clips[name] = clip;
       }),
     );
-    return this.normalize(rigged.scene, kind, clips, true, arsenal);
+    return this.normalize(SkeletonUtils.clone(rigged.scene), kind, clips, true, arsenal);
   }
 
   /** One clip GLB — queued, retried, and never allowed to throw at the caller. */
   private async fetchClip(url: string, name: ClipName): Promise<THREE.AnimationClip | null> {
     try {
-      const gltf = await loadGltf(this.loader, url, 5);
-      const source = gltf.animations[0];
+      const reference = animationSource(url);
+      let animations = this.animationBundles.get(reference.url);
+      if (!animations) {
+        const gltf = await loadGltf(this.loader, reference.url, 5);
+        animations = gltf.animations;
+        this.animationBundles.set(reference.url, animations);
+      }
+      const source = selectAnimation(animations, reference.clip);
       if (!source) return null;
       const clip = source.clone();
       clip.name = name;
@@ -2152,6 +2188,8 @@ export class PieceFactory {
   dispose(): void {
     this.clipListener = null;
     this.clipJobs.clear();
+    this.animationBundles.clear();
+    this.rigJobs.clear();
     this.clipFailures.clear();
     this.clipSources.clear();
     this.mustered = null;

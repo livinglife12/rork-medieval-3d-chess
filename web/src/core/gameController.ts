@@ -906,7 +906,9 @@ export class GameController extends Emitter<ControllerEvents> {
     const difficulty: Difficulty =
       mode === "attract" ? "medium" : demo ? (turn === "w" ? demo.white : demo.black) : this.options.difficulty;
     const started = performance.now();
-    const best = await this.ai.bestMove(this.chess.fen(), difficulty);
+    // Earlier positions let the engine see repetitions instead of drifting into a draw.
+    const history = (this.chess.history({ verbose: true }) as Move[]).map((move) => move.before);
+    const best = await this.ai.bestMove(this.chess.fen(), difficulty, history);
     if (generation !== this.generation || this.status !== "playing") {
       this.thinking = false;
       return;

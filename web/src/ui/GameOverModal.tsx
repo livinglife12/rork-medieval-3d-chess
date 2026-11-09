@@ -30,6 +30,8 @@ interface GameOverModalProps {
   versusComputer: boolean;
   moveCount: number;
   showcase?: ShowcaseOutcome | null;
+  /** Campaign verdict line, e.g. which chapter the win unlocked. */
+  campaignNote?: string | null;
   onRematch: () => void;
   onMenu: () => void;
 }
@@ -58,6 +60,7 @@ export function GameOverModal({
   versusComputer,
   moveCount,
   showcase,
+  campaignNote,
   onRematch,
   onMenu,
 }: GameOverModalProps) {
@@ -119,6 +122,11 @@ export function GameOverModal({
           <h2 className="mc-display mt-4 text-3xl font-bold tracking-[0.14em] text-[#43301a]">{headline}</h2>
           <div className="mc-rule mx-auto mt-2 w-40 opacity-70" />
           <p className="mt-2 text-sm italic text-[#6a5334]">{REASON_COPY[result.reason]}</p>
+          {campaignNote ? (
+            <p className="mc-display mt-3 text-[0.62rem] tracking-[0.22em] text-[#7d6236]" role="status">
+              {campaignNote}
+            </p>
+          ) : null}
 
           {showcase ? (
             <p className="mc-display mt-2 text-[0.6rem] tracking-[0.24em] text-[#7d6236]">

@@ -26,7 +26,7 @@ import {
 } from "./pieces";
 import { PLAQUE_ASPECT, promotionPlaqueTexture } from "./rankBadges";
 import { PostFX } from "./postfx";
-import { QUALITY_SETTINGS, type QualityPreset } from "./quality";
+import { QUALITY_SETTINGS, renderPixelRatio, type QualityPreset } from "./quality";
 import { AMMUNITION, type AmmoKind } from "./ammunition";
 import { disposeShatterAssets, impactDust, spawnImpactShatter, type ImpactBody } from "./shatter";
 import {
@@ -302,6 +302,7 @@ const GUNPOWDER_KINDS: PieceKind[] = ["k", "q", "b", "r", "p"];
 
 function attackStyle(kind: PieceKind, arsenal: ArsenalId): AttackStyle {
   if (arsenal === "empire" && GUNPOWDER_KINDS.includes(kind)) return "gun";
+  if (arsenal === "viking" && kind === "q") return "melee";
   return RANGED_KINDS.includes(kind) ? "spell" : "melee";
 }
 
@@ -1014,6 +1015,7 @@ export class SceneEngine {
   /** Travels with the camera so the near face of every figure stays readable. */
   private cameraLamp: THREE.DirectionalLight;
   private captureCinematics = true;
+  private warMode = false;
   /**
    * Hotseat: whether a played turn swings the view round to the other side. Off
    * unless the player asks for it — a half turn of the hall between every ply is
@@ -1099,7 +1101,7 @@ export class SceneEngine {
       powerPreference: "high-performance",
       alpha: false,
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, settings.maxPixelRatio));
+    this.renderer.setPixelRatio(renderPixelRatio(preset, window.devicePixelRatio));
     this.renderer.shadowMap.enabled = settings.shadows;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -1585,6 +1587,13 @@ export class SceneEngine {
       const strikeSquare = event.capture ? event.capture.square : event.to;
       // The battle beat is a camera performance — it has no meaning on the map.
       if (this.captureCinematics && !this.tactical) {
+        if (this.warMode) {
+          // War Mode is presentation-only: chess.js still owns every legal
+          // move. The extra beat makes the optional mode feel meaningfully
+          // different without changing balance or state.
+          this.shake.add(0.16);
+          this.strikeImpact(strikeSquare, 1.35);
+        }
         // The strike and the fall are the whole beat: make sure both figures
         // actually hold those clips before the fight starts.
         await this.armCombat(piece, victim);
@@ -1958,11 +1967,46 @@ export class SceneEngine {
     const accent = FACTION_ACCENT[victor.color];
     const centre = squareToWorld(square, BOARD_TOP + 0.032);
 
+    if (victor.arsenal === "viking") {
+      // Frostborn claim beat: a cold shockwave and crystalline spray make the
+      // legion feel different even while it uses the shared fallback meshes.
+      this.effects.spawnFlash(centre.clone().setY(BOARD_TOP + 0.2), this.warMode ? 1.9 : 1.35, 0.34);
+      this.effects.spawnBurst(centre.clone().setY(BOARD_TOP + 0.18), 0x9be7ff, this.warMode ? 46 : 28, {
+        speed: this.warMode ? 3.2 : 2.4,
+        life: 0.9,
+        gravity: 1.8,
+        radius: 0.3,
+        size: 0.055,
+        growth: 0.35,
+        rise: 0.8,
+        drag: 0.7,
+      });
+    }
+    if (victor.arsenal === "undead") {
+      this.effects.spawnFlash(centre.clone().setY(BOARD_TOP + 0.22), this.warMode ? 1.8 : 1.2, 0.3);
+      this.effects.spawnBurst(centre.clone().setY(BOARD_TOP + 0.2), 0x57e59b, this.warMode ? 42 : 24, {
+        speed: this.warMode ? 2.9 : 2.1,
+        life: 1.1,
+        gravity: 0.7,
+        radius: 0.28,
+        size: 0.06,
+        growth: 0.55,
+        rise: 1.05,
+        drag: 0.55,
+      });
+    }
+
     audio.conquest({
       pan: this.stereoPan(centre),
       weight,
       volume: 0.78 + weight * 0.3,
     });
+    if (victor.arsenal === "viking") {
+      audio.frostClaim({ pan: this.stereoPan(centre), weight, volume: this.warMode ? 1.35 : 1 });
+    }
+    if (victor.arsenal === "undead") {
+      audio.soulClaim({ pan: this.stereoPan(centre), weight, volume: this.warMode ? 1.3 : 1 });
+    }
 
     void spawnConquestClaim(this.scene, this.tweens, centre, {
       color: accent,
@@ -2093,6 +2137,11 @@ export class SceneEngine {
     // put. Note this asks for the clip itself, not merely for a rig — a figure
     // whose strike failed to download must still visibly attack.
     const strike = attacker.hasClip("attack") ? attacker.playAttack() : null;
+    if (attacker.arsenal === "viking") {
+      audio.playExternal("swordAttack", this.warMode ? 0.42 : 0.28);
+    } else if (attacker.arsenal === "undead") {
+      audio.playExternal("soulSwish", this.warMode ? 0.34 : 0.22);
+    }
     if (profile.swing > 0) {
       // The weapon is heard coming round just before it arrives.
       const lead = strike && strike.duration > 0 ? Math.max(0, strike.impact - 0.18) : 0.05;
@@ -3199,6 +3248,26 @@ export class SceneEngine {
       attacker.setStrikeTilt(tilt);
     };
 
+    if (attacker.arsenal === "undead") {
+      // The husk coils slowly, shudders, then snaps forward. End at the same
+      // impact pose as recovery expects so the return never jumps.
+      await this.tweens.to({
+        duration: 0.38 + heft * 0.1,
+        easing: Ease.outCubic,
+        onUpdate: (t) => push(wind * t, Math.sin(t * Math.PI * 4) * 0.06 * t, -0.24 * t),
+      });
+      await this.tweens.to({
+        duration: 0.09,
+        easing: Ease.inCubic,
+        onUpdate: (t) => push(
+          THREE.MathUtils.lerp(wind, reach, t),
+          0.3 * t,
+          THREE.MathUtils.lerp(-0.24, chop, t),
+        ),
+      });
+      return;
+    }
+
     // Weight shifts back onto the rear foot, shoulders turning out of line and
     // the weapon taken back behind the body.
     await this.tweens.to({
@@ -3605,6 +3674,8 @@ export class SceneEngine {
   private impactBody(victim: PieceView): ImpactBody {
     const armoured = victim.kind === "n" || victim.kind === "r";
     switch (this.factory.getSkins()[victim.color]) {
+      case "undead":
+        return "obsidian";
       case "empire":
         return armoured ? "plate" : "uniform";
       case "sun":
@@ -4958,7 +5029,7 @@ export class SceneEngine {
     if (preset === this.preset) return;
     this.preset = preset;
     const settings = QUALITY_SETTINGS[preset];
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, settings.maxPixelRatio));
+    this.renderer.setPixelRatio(renderPixelRatio(preset, window.devicePixelRatio));
     this.renderer.shadowMap.enabled = settings.shadows && !this.safeMode;
     this.hall.applyQuality(preset);
     this.battlefield.applyQuality(preset);
@@ -5077,6 +5148,10 @@ export class SceneEngine {
 
   setCaptureCinematics(enabled: boolean): void {
     this.captureCinematics = enabled;
+  }
+
+  setWarMode(enabled: boolean): void {
+    this.warMode = enabled;
   }
 
   setRotateBoard(enabled: boolean): void {
@@ -5315,6 +5390,14 @@ export class SceneEngine {
     this.handleResize();
     this.start();
   };
+
+  /** Export the current cinematic frame for photo mode. */
+  captureFrame(): string {
+    // The drawing buffer is not preserved between frames, so draw one now and
+    // read it back in the same task; otherwise the snapshot comes out blank.
+    this.postfx.render(0);
+    return this.canvas.toDataURL("image/png");
+  }
 
   dispose(): void {
     this.disposed = true;

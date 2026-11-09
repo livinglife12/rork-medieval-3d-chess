@@ -1103,6 +1103,25 @@ const LOADOUT: Record<ArsenalId, Record<PieceKind, Loadout>> = {
     r: { train: "fieldCannon" },
     p: { main: "musketBayonet" },
   },
+  // Frostborn first pass: the legion uses the proven melee primitives while
+  // its dedicated GLB weapon set is being authored. The identity still reads
+  // through the roster, materials, banners and capture treatment.
+  viking: {
+    k: { main: "greatsword" },
+    q: { main: "longsword" },
+    b: { main: "crystalStaff" },
+    n: { main: "longsword", off: "roundShield" },
+    r: { main: "warhammer", off: "towerShield" },
+    p: { main: "spear", off: "roundShield" },
+  },
+  undead: {
+    k: { main: "greatsword" },
+    q: { main: "scepter" },
+    b: { main: "crystalStaff" },
+    n: { main: "longsword" },
+    r: { main: "warhammer" },
+    p: { main: "spear" },
+  },
 };
 
 // ------------------------------------------------------------------ materials
@@ -1341,8 +1360,8 @@ function findBone(root: THREE.Object3D, pattern: RegExp): THREE.Bone | null {
   return found;
 }
 
-const RIGHT_HAND = /^(mixamorig)?(right ?hand|hand[_.]?r|r[_.]?hand)$/i;
-const LEFT_HAND = /^(mixamorig)?(left ?hand|hand[_.]?l|l[_.]?hand)$/i;
+const RIGHT_HAND = /^(mixamorig[:_]?\d*)?(right ?hand|hand[_.]?r|r[_.]?hand|fist[_.]?r|r[_.]?fist)$/i;
+const LEFT_HAND = /^(mixamorig[:_]?\d*)?(left ?hand|hand[_.]?l|l[_.]?hand|fist[_.]?l|l[_.]?fist)$/i;
 
 /** The bone a wrist hangs off (its forearm), or null at the top of the chain. */
 function boneParent(bone: THREE.Bone): THREE.Bone | null {

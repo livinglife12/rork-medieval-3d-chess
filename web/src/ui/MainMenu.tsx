@@ -1,10 +1,19 @@
 import { useState } from "react";
-import { Clapperboard, Crown, Swords, Settings as SettingsIcon, Users } from "lucide-react";
+import { Check, Clapperboard, Crown, Swords, Settings as SettingsIcon, Users, Map } from "lucide-react";
 
 import type { DemoOptions, Difficulty, Faction } from "../core/types";
+import { ARMY_SKINS } from "../assets/generated";
 import { Crest } from "./Heraldry";
 import { useHasKeyboard } from "./inputMode";
 import { MusterSection, type MusterChoice } from "./Muster";
+import {
+  CAMPAIGN_MISSIONS,
+  isMissionUnlocked,
+  loadCampaignProgress,
+  nextMission,
+  selectMission,
+  type CampaignMission,
+} from "../core/campaign";
 
 export interface MatchConfig {
   mode: "ai" | "hotseat" | "demo";
@@ -12,6 +21,7 @@ export interface MatchConfig {
   playerColor: Faction;
   clockMinutes: number | null;
   demo?: DemoOptions;
+  campaignMission?: CampaignMission;
 }
 
 interface MainMenuProps {
@@ -46,7 +56,7 @@ const CLOCKS: { label: string; value: number | null }[] = [
 
 export function MainMenu({ onStart, onOpenSettings, muster, onMuster, attract, onInteract }: MainMenuProps) {
   const hasKeyboard = useHasKeyboard();
-  const [tab, setTab] = useState<"ai" | "hotseat" | "demo">("ai");
+  const [tab, setTab] = useState<"ai" | "hotseat" | "demo" | "campaign">("ai");
   const [difficulty, setDifficulty] = useState<Difficulty>("medium");
   const [playerColor, setPlayerColor] = useState<Faction>("w");
   const [clock, setClock] = useState<number | null>(null);
@@ -54,14 +64,22 @@ export function MainMenu({ onStart, onOpenSettings, muster, onMuster, attract, o
   const [demoBlack, setDemoBlack] = useState<Difficulty>("hard");
   const [demoSpeed, setDemoSpeed] = useState(1);
   const [demoLoop, setDemoLoop] = useState(true);
+  const [campaignProgress, setCampaignProgress] = useState(loadCampaignProgress);
+  const [campaignMission, setCampaignMission] = useState<CampaignMission>(() => nextMission(campaignProgress));
+  const chooseMission = (mission: CampaignMission): void => {
+    setCampaignMission(mission);
+    setCampaignProgress((progress) => selectMission(progress, mission.id));
+  };
 
   const start = (): void =>
     onStart({
-      mode: tab,
-      difficulty,
-      playerColor,
+      mode: tab === "campaign" ? "ai" : tab,
+      difficulty: tab === "campaign" ? campaignMission.difficulty : difficulty,
+      // Campaign chapters are written for the near-side legion, so the player always leads it.
+      playerColor: tab === "campaign" ? "w" : playerColor,
       clockMinutes: tab === "demo" ? null : clock,
       demo: tab === "demo" ? { white: demoWhite, black: demoBlack, speed: demoSpeed, autoRematch: demoLoop } : undefined,
+      campaignMission: tab === "campaign" ? campaignMission : undefined,
     });
 
   return (
@@ -82,7 +100,7 @@ export function MainMenu({ onStart, onOpenSettings, muster, onMuster, attract, o
       </div>
 
       <div className="mc-slate mc-goldleaf mc-rise flex w-full min-h-0 max-w-md flex-col p-5 sm:p-6">
-        <div className="mb-5 grid shrink-0 grid-cols-3 gap-2">
+        <div className="mb-5 grid shrink-0 grid-cols-2 gap-2">
           <button
             type="button"
             className="mc-chip flex items-center justify-center gap-1.5 px-1 py-3"
@@ -107,10 +125,56 @@ export function MainMenu({ onStart, onOpenSettings, muster, onMuster, attract, o
           >
             <Clapperboard size={14} /> AI vs AI
           </button>
+          <button
+            type="button"
+            className="mc-chip flex items-center justify-center gap-1.5 px-1 py-3"
+            data-active={tab === "campaign"}
+            onClick={() => setTab("campaign")}
+          >
+            <Map size={14} /> Campaign
+          </button>
         </div>
 
         <div className="mc-scroll -mr-2 min-h-0 flex-auto overflow-y-auto pr-2">
-        {tab === "ai" ? (
+        {tab === "campaign" ? (
+          <div className="mc-fade space-y-3">
+            <p className="text-sm italic leading-relaxed text-[#b7a88a]">
+              Follow the Frostborn clans through a chain of battles. Completing a mission unlocks the next chapter.
+            </p>
+            {CAMPAIGN_MISSIONS.map((mission) => {
+              const unlocked = isMissionUnlocked(mission, campaignProgress);
+              const won = campaignProgress.completed.includes(mission.id);
+              return (
+                <button
+                  key={mission.id}
+                  type="button"
+                  disabled={!unlocked}
+                  className="mc-chip flex w-full flex-col items-start gap-1 px-3 py-3 text-left disabled:cursor-not-allowed disabled:opacity-40"
+                  data-active={campaignMission.id === mission.id}
+                  aria-pressed={campaignMission.id === mission.id}
+                  onClick={() => chooseMission(mission)}
+                >
+                  <span className="mc-display flex w-full items-center justify-between gap-2">
+                    {mission.title}
+                    {won ? (
+                      <span className="flex shrink-0 items-center gap-1 text-[0.55rem] tracking-[0.2em]">
+                        <Check size={11} aria-hidden /> WON
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="font-['Crimson_Pro',Georgia,serif] text-[0.85rem] normal-case italic leading-snug tracking-normal opacity-85">
+                    {mission.description}
+                  </span>
+                  <span className="text-[0.58rem] tracking-[0.18em] opacity-90">
+                    {unlocked
+                      ? `${mission.difficulty} · versus the ${ARMY_SKINS[mission.opponent].label}`
+                      : "Locked — complete the previous mission"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : tab === "ai" ? (
           <div className="mc-fade space-y-5">
             <div>
               <p className="mc-display mb-2 text-[0.62rem] tracking-[0.3em] text-[#a89268]">Opponent</p>

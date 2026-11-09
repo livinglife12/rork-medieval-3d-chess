@@ -57,13 +57,14 @@ export class AiClient {
     return worker;
   }
 
-  bestMove(fen: string, difficulty: Difficulty): Promise<EngineMove | null> {
+  /** `history` lists the FENs of earlier positions in the game, oldest first. */
+  bestMove(fen: string, difficulty: Difficulty, history: string[] = []): Promise<EngineMove | null> {
     this.cancel();
     const worker = this.ensureWorker();
     const id = this.nextId++;
     return new Promise<EngineMove | null>((resolve) => {
       this.pending = { id, resolve };
-      worker.postMessage({ id, fen, difficulty });
+      worker.postMessage({ id, fen, difficulty, history });
     });
   }
 

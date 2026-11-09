@@ -1,0 +1,12 @@
+Assets:
+- ashen-zombie-male.glb (Zombie_Male.gltf)
+- ashen-zombie-female.glb (Zombie_Female.gltf)
+
+Creator: Quaternius
+Pack: Ultimate Animated Character Pack
+Source: https://quaternius.com/packs/ultimatedanimatedcharacter.html
+Official files: https://drive.google.com/drive/folders/1UNNT0MeVX0O04RGgu8aLkKe3fwB9_t-A
+License: CC0 1.0 Universal
+License URL: https://creativecommons.org/publicdomain/zero/1.0/
+Downloaded: 2026-09-10
+Conversion: Blender 5.2.1, embedded glTF to GLB with animations and skinning preserved.

@@ -10,7 +10,7 @@ import {
   THINK_FLOOR_CHOICES,
 } from "../core/gameController";
 import type { Faction, LedgerMove, PieceKind } from "../core/types";
-import { Clapperboard } from "lucide-react";
+import { Camera, Clapperboard } from "lucide-react";
 import { ARENA_LOOKS, DEFAULT_ARENA } from "../scene/arena";
 import { detectQualityPreset, type QualityPreset } from "../scene/quality";
 import { SceneEngine, type CameraPreset, type ShowcaseCamera } from "../scene/sceneEngine";
@@ -21,6 +21,7 @@ import { MainMenu, type MatchConfig } from "./MainMenu";
 import type { MusterChoice } from "./Muster";
 import { SettingsPanel, type GameSettings } from "./SettingsPanel";
 import { useGameSnapshot } from "./useGameSnapshot";
+import { completeMission, loadCampaignProgress, missionOutcomeNote, type CampaignMission } from "../core/campaign";
 import "./medieval.css";
 
 type Phase = "loading" | "menu" | "playing";
@@ -227,6 +228,7 @@ export function GameShell() {
     arena: DEFAULT_ARENA,
     skins: initialArmies,
     captureCinematics: true,
+    warMode: false,
     rotateBoard: initialSeatSwing,
     premoves: initialPremoves,
     premoveDepth: initialPremoveDepth,
@@ -255,6 +257,31 @@ export function GameShell() {
   const [cinema, setCinema] = useState(false);
   /** How the camera behaves during a showcase duel: held, orbiting or following. */
   const [showcaseCamera, setShowcaseCamera] = useState<ShowcaseCamera>("follow");
+  const [activeCampaign, setActiveCampaign] = useState<CampaignMission | null>(null);
+  /**
+   * The armies the player had mustered before a campaign mission borrowed the field.
+   * While set, the mission's armies are on the board but are never saved as the
+   * player's own preference, and they are handed back on the way to the menu.
+   */
+  const campaignSkinsRestore = useRef<GameSettings["skins"] | null>(null);
+
+  useEffect(() => {
+    if (!activeCampaign || snapshot.status !== "over" || !snapshot.result) return;
+    // Campaign missions are authored for the near-side legion, which the player
+    // always commands. A victory unlocks the next chapter; draws and losses remain replayable.
+    if (snapshot.result.winner === snapshot.playerColor) {
+      completeMission(loadCampaignProgress(), activeCampaign.id);
+    }
+  }, [activeCampaign, snapshot.result, snapshot.status, snapshot.playerColor]);
+
+  const campaignNote =
+    activeCampaign && snapshot.result
+      ? missionOutcomeNote(
+          activeCampaign.id,
+          snapshot.result.winner === snapshot.playerColor,
+          snapshot.result.winner === null,
+        )
+      : null;
 
   // ------------------------------------------------------------ boot the scene
   useEffect(() => {
@@ -358,6 +385,7 @@ export function GameShell() {
       engine.setArmySkins(settings.skins);
     }
     engine.setCaptureCinematics(settings.captureCinematics);
+    engine.setWarMode(settings.warMode);
     engine.setRotateBoard(settings.rotateBoard);
     controller.setPremovesEnabled(settings.premoves);
     controller.setPremoveDepth(settings.premoveDepth);
@@ -367,7 +395,7 @@ export function GameShell() {
     engine.setBrightness(settings.brightness);
     audio.setMuted(settings.muted);
     saveRenderPrefs({ safeMode: settings.safeMode, brightness: settings.brightness });
-    saveArmyPrefs(settings.skins);
+    if (!campaignSkinsRestore.current) saveArmyPrefs(settings.skins);
     saveSeatSwing(settings.rotateBoard);
     savePremoves(settings.premoves);
     savePremoveDepth(settings.premoveDepth);
@@ -413,6 +441,18 @@ export function GameShell() {
       audio.blip("press");
       const engine = engineRef.current;
       const showcase = config.mode === "demo";
+      const mission = config.campaignMission ?? null;
+      setActiveCampaign(mission);
+      if (mission) {
+        const skins = { w: mission.legion, b: mission.opponent };
+        setSettings((current) => {
+          campaignSkinsRestore.current ??= current.skins;
+          return { ...current, skins };
+        });
+        // The settings effect only re-dresses the board outside a match, and this
+        // update lands together with the switch to "playing", so dress it here.
+        engine?.setArmySkins(skins);
+      }
       engine?.setAttract(false);
       engine?.setInteractive(true);
       // A showcase brings its own framing (and its own crisp grade) with it.
@@ -440,8 +480,23 @@ export function GameShell() {
     engine?.setShowcase(false);
     engine?.setCameraPreset("cinematic");
     setCinema(false);
+    setActiveCampaign(null);
+    const restore = campaignSkinsRestore.current;
+    if (restore) {
+      campaignSkinsRestore.current = null;
+      setSettings((current) => ({ ...current, skins: restore }));
+    }
     setPhase("menu");
   }, [controller]);
+
+  const savePhotoFrame = useCallback(() => {
+    const dataUrl = engineRef.current?.captureFrame();
+    if (!dataUrl) return;
+    const link = document.createElement("a");
+    link.href = dataUrl;
+    link.download = `kings-gambit-${new Date().toISOString().replace(/[:.]/g, "-")}.png`;
+    link.click();
+  }, []);
 
   // -------------------------------------------------------- showcase controls
   const handleTogglePause = useCallback(() => {
@@ -683,15 +738,26 @@ export function GameShell() {
         ) : null}
 
         {phase === "playing" && cinema ? (
-          <button
-            type="button"
-            className="mc-cinema-restore pointer-events-auto"
-            onClick={() => setCinema(false)}
-            title={hasKeyboard ? "Show the interface again (C)" : "Show the interface again"}
-            aria-label="Show the interface again"
-          >
-            <Clapperboard size={15} />
-          </button>
+          <>
+            <button
+              type="button"
+              className="mc-cinema-restore mc-cinema-photo pointer-events-auto"
+              onClick={savePhotoFrame}
+              title="Save this frame as a picture"
+              aria-label="Save this frame as a picture"
+            >
+              <Camera size={15} />
+            </button>
+            <button
+              type="button"
+              className="mc-cinema-restore pointer-events-auto"
+              onClick={() => setCinema(false)}
+              title={hasKeyboard ? "Show the interface again (C)" : "Show the interface again"}
+              aria-label="Show the interface again"
+            >
+              <Clapperboard size={15} />
+            </button>
+          </>
         ) : null}
 
         {/* The picker itself is in the scene — every candidate stands on a plinth
@@ -758,6 +824,7 @@ export function GameShell() {
                   }
                 : null
             }
+            campaignNote={campaignNote}
             onRematch={handleRematch}
             onMenu={returnToMenu}
           />

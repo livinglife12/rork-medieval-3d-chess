@@ -1799,6 +1799,11 @@
     border-color 220ms ease;
 }
 
+/* The photo button sits just left of the restore button. */
+.mc-cinema-photo {
+  right: calc(3.25rem + var(--mc-safe-right));
+}
+
 .mc-cinema-restore:hover {
   opacity: 1;
   color: #fff4dc;

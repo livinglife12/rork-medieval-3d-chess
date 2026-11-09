@@ -27,13 +27,13 @@ type Roster<T> = Partial<Record<PieceKind, T>>;
  * for the Grande Armée, generated sculpts of the real thing (see
  * {@link ARM_SCULPTS}).
  */
-export type ArsenalId = "kingdom" | "sun" | "empire";
+export type ArsenalId = "kingdom" | "sun" | "empire" | "viking" | "undead";
 
 /** Selectable army skins. Either side of the board can wear any of them. */
-export type ArmySkinId = "ivory" | "sun" | "empire";
+export type ArmySkinId = "ivory" | "sun" | "empire" | "viking" | "undead";
 
 /** Static (unrigged) sculpt per kind — the fallback when a rig fails to load. */
-const STILL_MODELS: Record<ArmySkinId, Roster<string>> = {
+const STILL_MODELS: Record<Exclude<ArmySkinId, "viking" | "undead">, Roster<string>> = {
   ivory: {
     k: `${MODEL_BASE}/704a772c-4a50-4619-b5ad-6e2bbf9703b8.glb`,
     q: `${MODEL_BASE}/13928f19-23a3-46ba-9879-aacca58f2886.glb`,
@@ -61,6 +61,27 @@ const STILL_MODELS: Record<ArmySkinId, Roster<string>> = {
     n: `${MODEL_BASE}/ebbe76e7-dbc7-4961-bf10-035acee68ee1.glb`,
     r: `${MODEL_BASE}/044ccbd8-c9d3-452e-8524-4a47034b8fe2.glb`,
     p: `${MODEL_BASE}/29b4a2e7-eba2-4ca7-a9f3-e22278c8df9e.glb`,
+  },
+};
+// Viking Clan: first-pass playable legion using the robust Grande Armée
+// fallback roster until dedicated Viking GLBs are supplied. Apply this after
+// initialization so the module never reads its own const while constructing.
+const ADDITIONAL_STILL_MODELS = {
+  viking: {
+    k: "/assets/models/frostborn-jarl.glb",
+    q: "/assets/models/frostborn-shieldmaiden.glb",
+    b: "/assets/models/frostborn-seer.glb",
+    n: "/assets/models/frostborn-berserker.glb",
+    r: "/assets/models/frostborn-huscarl.glb",
+    p: "/assets/models/frostborn-raider.glb",
+  },
+  undead: {
+    k: "/assets/models/ashen-zombie.glb",
+    q: "/assets/models/ashen-zombie.glb",
+    b: "/assets/models/ashen-zombie.glb",
+    n: "/assets/models/ashen-zombie.glb",
+    r: "/assets/models/ashen-zombie.glb",
+    p: "/assets/models/ashen-zombie.glb",
   },
 };
 
@@ -109,7 +130,7 @@ export interface PieceAnimationSet {
   rise?: string;
 }
 
-const ANIMATED_MODELS: Record<ArmySkinId, Roster<PieceAnimationSet>> = {
+const ANIMATED_MODELS: Record<Exclude<ArmySkinId, "viking" | "undead">, Roster<PieceAnimationSet>> = {
   ivory: {
   // The crown stands at full height and judges rather than brawls.
   k: {
@@ -338,6 +359,55 @@ const ANIMATED_MODELS: Record<ArmySkinId, Roster<PieceAnimationSet>> = {
   },
 };
 
+/** One self-contained Quaternius GLB per Frostborn rank, clips selected by name. */
+function frostbornSet(file: string, attack = "SwordSlash"): PieceAnimationSet {
+  const url = `/assets/models/${file}`;
+  return {
+    rigged: url,
+    idle: `${url}#Idle`,
+    walk: `${url}#Walk`,
+    run: `${url}#Run`,
+    attack: `${url}#${attack}`,
+    death: `${url}#Death`,
+  };
+}
+
+const FROSTBORN_ANIMATED: Roster<PieceAnimationSet> = {
+  k: frostbornSet("frostborn-jarl.glb"),
+  q: frostbornSet("frostborn-shieldmaiden.glb"),
+  b: frostbornSet("frostborn-seer.glb", "Shoot_OneHanded"),
+  n: frostbornSet("frostborn-berserker.glb"),
+  r: frostbornSet("frostborn-huscarl.glb"),
+  p: frostbornSet("frostborn-raider.glb"),
+};
+
+function ashenSet(file: string): PieceAnimationSet {
+  const url = `/assets/models/${file}`;
+  return {
+    rigged: url,
+    idle: `${url}#Idle`,
+    walk: `${url}#Walk`,
+    run: `${url}#Run`,
+    death: `${url}#Death`,
+  };
+}
+
+const ASHEN_ANIMATED: Roster<PieceAnimationSet> = {
+  k: ashenSet("ashen-zombie-male.glb"),
+  // No borrowed strike clips: the Oracle and Hexbinder use the scene's
+  // hand-driven soul-cast, while the melee ranks use the Ashen shudder-lunge.
+  q: ashenSet("ashen-zombie-female.glb"),
+  b: ashenSet("ashen-zombie-female.glb"),
+  n: ashenSet("ashen-zombie-male.glb"),
+  r: ashenSet("ashen-zombie-male.glb"),
+  p: {
+    rigged: "/assets/models/ashen-rig.glb",
+    idle: "/assets/models/ashen-rig.glb#PARADO_ZUMB",
+    walk: "/assets/models/ashen-rig.glb#Andando",
+    run: "/assets/models/ashen-rig.glb#Correndo2",
+  },
+};
+
 /**
  * The magazine, sculpt by sculpt: every round the Grande Armée fires is a real
  * mesh, not a glowing dot, so a shot crossing the hall reads as a piece of metal
@@ -466,7 +536,7 @@ const CRY_BASE = "https://r2-pub.rork.com/generated-audio/g9111r67kl6tq85g540sd"
  * back at their natural pitch instead of speeding a longer take up.
  * Loaded lazily after the mixer unlocks (they are only needed on a capture).
  */
-const DEATH_CRIES: Record<ArmySkinId, Record<PieceKind, string>> = {
+const DEATH_CRIES: Record<Exclude<ArmySkinId, "viking" | "undead">, Record<PieceKind, string>> = {
   ivory: {
     k: `${CRY_BASE}/c4d801f3-b8e7-42bb-b046-6b21e9ec40a5.mp3`,
     q: `${CRY_BASE}/e01a2d0f-2b13-426b-89b4-d40e67d4b16f.mp3`,
@@ -571,10 +641,32 @@ export const ARMY_SKINS: Record<ArmySkinId, ArmySkin> = {
     animated: ANIMATED_MODELS.empire,
     cries: DEATH_CRIES.empire,
   },
+  viking: {
+    id: "viking",
+    label: "Frostborn Clans",
+    blurb: "Northern raiders — iron, fur, axes and storm-lit battle cries.",
+    ranks: { k: "Jarl", q: "Shieldmaiden", b: "Seer", n: "Berserker", r: "Huscarl", p: "Raider" },
+    arsenal: "viking",
+    native: "b",
+    still: ADDITIONAL_STILL_MODELS.viking,
+    animated: FROSTBORN_ANIMATED,
+    cries: DEATH_CRIES.ivory,
+  },
+  undead: {
+    id: "undead",
+    label: "Ashen Dead",
+    blurb: "A revenant host — bone, ash and green soul-fire beneath broken crowns.",
+    ranks: { k: "Lich King", q: "Death Oracle", b: "Hexbinder", n: "Grave Knight", r: "Bone Colossus", p: "Husk" },
+    arsenal: "undead",
+    native: "b",
+    still: ADDITIONAL_STILL_MODELS.undead,
+    animated: ASHEN_ANIMATED,
+    cries: DEATH_CRIES.ivory,
+  },
 };
 
 /** Presentation order of the skins in the settings panel. */
-export const ARMY_SKIN_ORDER: ArmySkinId[] = ["ivory", "sun", "empire"];
+export const ARMY_SKIN_ORDER: ArmySkinId[] = ["ivory", "sun", "empire", "viking", "undead"];
 
 /** Which army each side musters until the player says otherwise. */
 export const DEFAULT_ARMY_SKINS: Record<Faction, ArmySkinId> = { w: "ivory", b: "sun" };
@@ -733,6 +825,8 @@ export const ARMY_CARDS: Record<ArmySkinId, string> = {
   ivory: "https://r2-pub.rork.com/projects/g9111r67kl6tq85g540sd/assets/dc88fa56-b565-4cf8-aa98-9997c8685e5d.png",
   sun: "https://r2-pub.rork.com/projects/g9111r67kl6tq85g540sd/assets/3315dcf5-50c4-455b-bf13-aec6ff2ca2fd.png",
   empire: "https://r2-pub.rork.com/projects/g9111r67kl6tq85g540sd/assets/ea0a3e42-30f9-4a74-be8c-e74ea4513d1a.png",
+  viking: "https://r2-pub.rork.com/projects/g9111r67kl6tq85g540sd/assets/ea0a3e42-30f9-4a74-be8c-e74ea4513d1a.png",
+  undead: "https://r2-pub.rork.com/projects/g9111r67kl6tq85g540sd/assets/dc88fa56-b565-4cf8-aa98-9997c8685e5d.png",
 };
 
 /**

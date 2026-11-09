@@ -1,0 +1,10 @@
+Asset: ashen-rig.glb
+Author: byzmod3d
+Source: https://opengameart.org/content/3d-character-pack
+License: CC0 1.0 Universal
+License URL: https://creativecommons.org/publicdomain/zero/1.0/
+Archive: bravos_game_br_2023.zip, zumb_game.zip, zumb_game_free.zip
+Original: UPDATE/ZUMB_GAME_UPDATE_FREE__BLENDER_FULL.blend
+Exported objects: PARADO_ZUMB armature and ROUPA.000 mesh.
+Conversion: Blender 5.2.1, selected character only, embedded skeletal animations.
+The game selects named idle/walk/run clips; no source attack/death clip is claimed.

@@ -138,6 +138,12 @@ export const QUALITY_SETTINGS: Record<QualityPreset, QualitySettings> = {
 
 export const QUALITY_ORDER: QualityPreset[] = ["low", "medium", "high", "ultra"];
 
+/** Ultra supersamples standard-density displays; lower presets retain native caps. */
+export function renderPixelRatio(preset: QualityPreset, deviceRatio: number): number {
+  const native = Number.isFinite(deviceRatio) && deviceRatio > 0 ? deviceRatio : 1;
+  return Math.min(Math.max(native, preset === "ultra" ? 1.5 : 0), QUALITY_SETTINGS[preset].maxPixelRatio);
+}
+
 /**
  * First-run guess from the GPU string, core count and memory. The engine then
  * measures real frame times for a few seconds and steps down if needed.
